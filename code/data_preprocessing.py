@@ -58,5 +58,5 @@ plot_acf_pacf(cleaned_data['Indian Rupee'], 50)
 #%%
 train_df = cleaned_data.head(int(0.8 * cleaned_data.shape[0]))
 test_df = cleaned_data.tail(int(0.2 * cleaned_data.shape[0]))
-train_df.to_csv("../data/currency_exchange_rates_train.csv")
-test_df.to_csv("../data/currency_exchange_rates_test.csv")
+train_df.to_csv("../data/currency_exchange_rates_train.csv", index=False)
+test_df.to_csv("../data/currency_exchange_rates_test.csv", index=False)

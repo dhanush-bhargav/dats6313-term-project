@@ -43,6 +43,13 @@ def calculate_non_seasonal_differential(x: np.ndarray, order=1) -> np.ndarray:
         order -= 1
     return result
 
+def calculate_seasonal_differential(x: np.ndarray, order=1, seasonal=1) -> np.ndarray:
+    result = x.copy()
+    while (order > 0):
+        result = result[seasonal:] - result[:-seasonal]
+        order -= 1
+    return result
+
 def calculate_log_transform(x: np.ndarray) -> np.ndarray:
     result = x.copy()
     return np.log(result)
@@ -283,9 +290,9 @@ def generate_gpac_table(acf, j_max=7, k_max=7):
     for j in range(j_max):
         for k in range(1, k_max):
             den_mat = np.zeros((k, k))
-            window = np.arange(start=j, stop=j+k)
+            window_org = np.arange(start=j, stop=j+k)
             for t in range(k):
-                window = np.abs(window - t)
+                window = np.abs(window_org - t)
                 den_mat[:, t] = acf[window]
             num_mat = den_mat.copy()
             num_mat[:, k-1] = acf[np.arange(start=j+1, stop=j+k+1)]
