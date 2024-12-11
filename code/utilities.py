@@ -403,3 +403,156 @@ def lm_algorithm(y, ar_order, ma_order, max_iter=10, delta=1e-6, eps=1e-5, mu=1e
             return params, sigma_error, cov_params, sse_hist
         else:
             return params, sigma_error, cov_params, sse_hist
+
+
+def acf_exog_box_jenkins(u_t, max_k=50) -> np.ndarray:
+    acfs = []
+    for tau in range(0, max_k  + 1):
+        sum = 0.0
+        for k in range(0, u_t.shape[0] - tau):
+            sum += u_t[k] * u_t[k + tau]
+        acfs.append(sum / (u_t.shape[0] - tau))
+    acfs = np.array(acfs)
+    result = []
+    window_org = np.arange(0, max_k+1)
+    for i in range(0, max_k+1):
+        window = np.abs(window_org - i)
+        result.append(acfs[window])
+    return np.array(result)
+
+
+def acf_cross_box_jenkins(u_t, y_t, max_k=50) -> np.ndarray:
+    acfs = []
+    for tau in range(0, max_k + 1):
+        sum = 0.0
+        for k in range(0, y_t.shape[0] - tau):
+            sum += u_t[k] * y_t[k + tau]
+        acfs.append(sum / (y_t.shape[0] - tau))
+    acfs = np.array(acfs)
+    return acfs.T
+
+
+def calc_vt_box_jenkins(y, g, u):
+    v_t = []
+    for t in range(u.shape[0]):
+        if t < g.shape[0]:
+            window = np.arange(t, -1, -1)
+            v_t.append(y[t] - np.dot(g[:t+1], u[window]))
+        else:
+            window = np.arange(t, t-g.shape[0], -1)
+            v_t.append(y[t] - np.dot(g, u[window]))
+    return np.array(v_t)
+
+
+def lm_algorithm_box_jenkins(y, u, n_b, n_f, n_c, n_d, max_iter=10, delta=1e-6, eps=1e-5, mu=1e-2, mu_max=1e3):
+    num_params = n_b + n_f + n_c + n_d
+    params = np.zeros((num_params,))
+    sigma_error = None
+    cov_params = None
+    num_iter = 1
+    sse_hist = []
+
+    while num_iter <= max_iter:
+        bq = [1, *params[:n_b].flatten()]
+        fq = [1, *params[n_b:n_f+n_b].flatten()]
+        cq = [1, *params[n_b + n_f:n_c + n_b + n_f].flatten()]
+        dq = [1, *params[-n_d:].flatten()]
+        bq = np.pad(bq, (0, max(0, n_f - n_b)), mode='constant')
+        fq = np.pad(fq, (0, max(0, n_b - n_f)), mode='constant')
+        cq = np.pad(cq, (0, max(0, n_d - n_c)), mode='constant')
+        dq = np.pad(dq, (0, max(0, n_c - n_d)), mode='constant')
+
+        _, r1 = signal.dlsim((dq, cq, 1.0), y)
+        _, r2 = signal.dlsim((np.convolve(bq, dq), np.convolve(fq, cq), 1.0), u)
+        residuals = r1.flatten() - r2.flatten()
+        residuals = residuals
+        sse = residuals.T @ residuals
+
+        if num_iter == 1:
+            sse_hist.append(sse)
+        X = []
+        for i in range(num_params):
+            params_i = params.copy()
+            params_i[i] = params[i] + delta
+
+            bq_i = [1, *params_i[:n_b].flatten()]
+            fq_i = [1, *params_i[n_b:n_f+n_b].flatten()]
+            cq_i = [1, *params_i[n_b + n_f:n_c + n_b + n_f].flatten()]
+            dq_i = [1, *params_i[-n_d:].flatten()]
+            bq_i = np.pad(bq_i, (0, max(0, n_f - n_b)), mode='constant')
+            fq_i = np.pad(fq_i, (0, max(0, n_b - n_f)), mode='constant')
+            cq_i = np.pad(cq_i, (0, max(0, n_d - n_c)), mode='constant')
+            dq_i = np.pad(dq_i, (0, max(0, n_c - n_d)), mode='constant')
+            _, r1_i = signal.dlsim((dq_i, cq_i, 1.0), y)
+            _, r2_i = signal.dlsim((np.convolve(bq_i, dq_i), np.convolve(fq_i, cq_i), 1.0), u)
+            residuals_i = r1_i.flatten() - r2_i.flatten()
+            residuals_i = residuals_i
+            x_i = (residuals - residuals_i) / delta
+            X.append(x_i)
+
+        X = np.array(X)
+        X = X.T
+        A = X.T @ X
+        g = X.T @ residuals
+        del_param = np.linalg.inv((A + mu * np.identity(num_params))) @ g
+        params_new = params + del_param
+        bq_new = [1, *params_new[:n_b].flatten()]
+        fq_new = [1, *params_new[n_b:n_f+n_b].flatten()]
+        cq_new = [1, *params_new[n_b + n_f:n_c + n_b + n_f].flatten()]
+        dq_new = [1, *params_new[-n_d:].flatten()]
+        bq_new = np.pad(bq_new, (0, max(0, n_f - n_b)), mode='constant')
+        fq_new = np.pad(fq_new, (0, max(0, n_b - n_f)), mode='constant')
+        cq_new = np.pad(cq_new, (0, max(0, n_d - n_c)), mode='constant')
+        dq_new = np.pad(dq_new, (0, max(0, n_c - n_d)), mode='constant')
+        _, r1_new = signal.dlsim((dq_new, cq_new, 1.0), y)
+        _, r2_new = signal.dlsim((np.convolve(bq_new, dq_new), np.convolve(fq_new, cq_new), 1.0), u)
+        residuals_new = r1_new - r2_new
+        residuals_new = residuals_new.flatten()
+        sse_new = residuals_new.T @ residuals_new
+
+        if sse_new < sse:
+            if np.linalg.norm(del_param, 2) < eps:
+                params = params_new
+                sigma_error = sse_new / (y.shape[0] - num_params)
+                cov_params = sigma_error * np.linalg.inv(A)
+                sse_hist.append(sse_new)
+                break
+            else:
+                params = params_new
+                mu = mu / 10
+        while sse_new >= sse:
+            mu *= 10
+            if mu > mu_max:
+                break
+            else:
+                bq_new = [1, *params_new[:n_b].flatten()]
+                fq_new = [1, *params_new[n_b:n_f + n_b].flatten()]
+                cq_new = [1, *params_new[n_b + n_f:n_c + n_b + n_f].flatten()]
+                dq_new = [1, *params_new[-n_d:].flatten()]
+                bq_new = np.pad(bq_new, (0, max(0, n_f - n_b)), mode='constant')
+                fq_new = np.pad(fq_new, (0, max(0, n_b - n_f)), mode='constant')
+                cq_new = np.pad(cq_new, (0, max(0, n_d - n_c)), mode='constant')
+                dq_new = np.pad(dq_new, (0, max(0, n_c - n_d)), mode='constant')
+                _, r1_new = signal.dlsim((dq_new, cq_new, 1.0), y)
+                _, r2_new = signal.dlsim((np.convolve(bq_new, dq_new), np.convolve(fq_new, cq_new), 1.0), u)
+                residuals_new = r1_new - r2_new
+                residuals_new = residuals_new.flatten()
+                sse_new = residuals_new.T @ residuals_new
+
+            if mu > mu_max:
+                sse_hist.append(sse_new)
+                break
+
+            num_iter += 1
+            sse_hist.append(sse_new)
+            params = params_new
+
+    if num_iter > max_iter:
+        print("Error: Model did not converge")
+        return params, sigma_error, cov_params, sse_hist
+    else:
+        if mu > mu_max:
+            print("Error: Mu exceeded max value")
+            return params, sigma_error, cov_params, sse_hist
+        else:
+            return params, sigma_error, cov_params, sse_hist

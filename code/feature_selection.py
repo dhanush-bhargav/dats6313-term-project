@@ -1,6 +1,4 @@
 #%%
-import os
-os.chdir('code')
 from utilities import *
 from CONSTANTS import *
 import seaborn as sns

@@ -1,6 +1,4 @@
 #%%
-import os
-os.chdir('code')
 from utilities import *
 from CONSTANTS import *
 import statsmodels.api as sm
@@ -102,24 +100,27 @@ ols_model5 = sm.OLS(y_train_df, X_train_df).fit()
 print(ols_model5.summary())
 
 #%%
-y_preds = ols_model4.predict(X_test_df.drop(columns=['Singapore Dollar']))
+y_preds = ols_model3.predict(X_test_df.drop(columns=['Thai Baht', 'Constant']))
 y_pred_df = pd.DataFrame(y_preds, columns=DEPENDENT_FEATURES)
 
 #%%
 plt.figure()
-plt.plot(range(y_train_df.shape[0]), y_train_df[DEPENDENT_FEATURES], label='Train')
-plt.plot(range(y_train_df.shape[0], y_train_df.shape[0] + y_test_df.shape[0]), y_test_df[DEPENDENT_FEATURES], label='Test')
-plt.plot(range(y_train_df.shape[0], y_train_df.shape[0] + y_test_df.shape[0]), y_pred_df[DEPENDENT_FEATURES], label='Prediction')
+plt.plot(range(y_train_df.shape[0]), scaler_y.inverse_transform(y_train_df[DEPENDENT_FEATURES]), label='Train')
+plt.plot(range(y_train_df.shape[0], y_train_df.shape[0] + y_test_df.shape[0]), scaler_y.inverse_transform(y_test_df[DEPENDENT_FEATURES]), label='Test')
+plt.plot(range(y_train_df.shape[0], y_train_df.shape[0] + y_test_df.shape[0]),scaler_y.inverse_transform(y_pred_df[DEPENDENT_FEATURES]), label='Prediction')
 plt.legend(loc='best')
+plt.title("Prediction of Indian Rupee using Multiple Linear Regression")
+plt.xlabel("Index")
+plt.ylabel("INR per 1US$")
 plt.grid(True)
 plt.tight_layout()
 plt.show()
 
 #%%
-forecast_errors = scaler_y.inverse_transform(y_test_df) - scaler_y.inverse_transform(y_pred_df)
+forecast_errors = scaler_y.inverse_transform(y_test_df[DEPENDENT_FEATURES]) - scaler_y.inverse_transform(y_pred_df[DEPENDENT_FEATURES])
 
 #%%
-acf = calculate_acf(forecast_errors.T[0], 21)
+acf = calculate_acf(forecast_errors.flatten(), 21)
 acf_sym = np.concatenate([acf[-1:0:-1], acf])
 conf_int = 1.96 / np.sqrt(forecast_errors.shape[0])
 
@@ -134,3 +135,14 @@ plt.ylabel("Magnitude")
 plt.title("Autocorrelation Function of Forecast Errors")
 plt.tight_layout()
 plt.show()
+
+#%%
+q_value = calc_q_value(forecast_errors.flatten(), 20)
+print(f"Q-value of MLR method: {q_value :.4f}")
+
+#%%
+print(f"Variance of Forecast Errors = {np.var(forecast_errors):.4f}")
+print(f"Mean of Forecast Errors = {np.mean(forecast_errors):.4f}")
+
+#%%
+plot_acf_pacf(forecast_errors, 20)
